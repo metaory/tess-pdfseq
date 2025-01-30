@@ -41,11 +41,11 @@ ENV OCR_LANGS=${TESS_LANGS} \
     TARGET_WIDTH=1800 \
     MAX_PAGES=3
 
-# Install runtime dependencies
+# Install runtime dependencies and language packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
         poppler-utils \
         tesseract-ocr \
-        tesseract-ocr-${TESS_LANGS} \
+        $(echo "${TESS_LANGS}" | tr '+' '\n' | xargs -I{} echo "tesseract-ocr-{}") \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -g ${GID} ocr \
     && useradd -u ${UID} -g ocr -s /bin/bash -m ocr

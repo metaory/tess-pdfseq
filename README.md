@@ -41,15 +41,19 @@ Environment variables for `bin/pdfseq`:
 - `DPI`: PDF scan resolution (default: 500)
 - `WIDTH`: Target width in pixels (default: 1800)
 - `MAX_PAGES`: Max pages per PDF (default: 3)
-- `WORKDIR`: Working directory (default: $PWD)
+- `WORKDIR`: Working directory (default: current directory)
 - `GPU`: Use GPU acceleration (default: 1)
 - `TAG`: Docker image tag (default: latest)
 
 ### Languages
 
-Specify languages during build:
+Specify one or more languages during build (plus-separated):
 ```bash
-docker build -t tess-pdfseq --build-arg TESS_LANGS="eng+ara+fas+urd" .
+# Single language
+docker build -t tess-pdfseq --build-arg TESS_LANGS="eng" .
+
+# Multiple languages
+docker build -t tess-pdfseq --build-arg TESS_LANGS="eng+fas+ara" .
 ```
 
 List available languages:
