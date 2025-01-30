@@ -16,59 +16,111 @@ class Config:
     target_width: int = int(os.getenv('TARGET_WIDTH', '1800'))
     max_pages: int = int(os.getenv('MAX_PAGES', '3'))
     dirname: Path = Path(__file__).parent.parent
+    use_gpu: bool = bool(int(os.getenv('GPU', '0')))
 
-def log(msg: str) -> None:
-    """Simple logging with timestamp"""
-    print(f'[{time.strftime("%H:%M:%S")}] {msg}', flush=True)
+def log(msg: str, level: str = 'info') -> None:
+    """Enhanced logging with timestamp and color"""
+    colors = {
+        'info': '\033[36m',  # cyan
+        'debug': '\033[2m',  # dim
+        'warn': '\033[33m',  # yellow
+        'error': '\033[31m'  # red
+    }
+    color = colors.get(level, '')
+    reset = '\033[0m'
+    ts = time.strftime("%H:%M:%S")
+    print(f'[{ts}] {color}{msg}{reset}', flush=True)
+
+def debug(msg: str) -> None:
+    """Debug level logging with indentation"""
+    log(f'  {msg}', 'debug')
 
 def get_pages(pdf_path: Path) -> Iterator[Image.Image]:
     """Extract pages from PDF"""
-    return (p for p in convert_from_path(str(pdf_path), Config.dpi)[:Config.max_pages])
+    log(f'Processing PDF: {pdf_path.name}')
+    pages = list(convert_from_path(str(pdf_path), Config.dpi)[:Config.max_pages])
+    debug(f'Extracted {len(pages)} pages at {Config.dpi} DPI')
+    return (p for p in pages)
 
 def resize_page(page: Image.Image) -> Image.Image:
     """Resize page to target width while maintaining aspect ratio"""
     w, h = page.size
     scale = max(1, int(Config.target_width / w))
-    return page.resize((scale * w, scale * h), Image.LANCZOS)
+    new_size = (scale * w, scale * h)
+    debug(f'Resizing page from {w}x{h} to {new_size[0]}x{new_size[1]}')
+    return page.resize(new_size, Image.LANCZOS)
 
 def process_img(img: Image.Image) -> cv2.Mat:
     """Process image for better OCR results"""
-    cv_img = cv2.cvtColor(cv2.UMat(img), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-    kernel = cv2.UMat(cv2.Mat(1, 1, cv2.CV_8U))
-    morph = cv2.morphologyEx(cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel)
-    return cv2.bitwise_or(gray, morph)
+    debug('Converting to OpenCV format')
+    # Use UMat for GPU acceleration if enabled
+    if Config.use_gpu:
+        debug('Using GPU acceleration')
+        cv_img = cv2.UMat(cv2.cvtColor(cv2.UMat(img), cv2.COLOR_RGB2BGR))
+        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+        kernel = cv2.UMat(cv2.Mat(1, 1, cv2.CV_8U))
+    else:
+        debug('Using CPU processing')
+        cv_img = cv2.cvtColor(cv2.Mat(img), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+        kernel = cv2.Mat(1, 1, cv2.CV_8U)
+
+    debug('Converting to grayscale')
+    debug('Applying morphological operations')
+    try:
+        morph = cv2.morphologyEx(cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel)
+        result = cv2.bitwise_or(gray, morph)
+        if Config.use_gpu:
+            result = result.get()  # Download from GPU if needed
+        return result
+    except cv2.error as e:
+        log(f'OpenCV error: {e}', 'error')
+        log('Falling back to grayscale only', 'warn')
+        return gray.get() if Config.use_gpu else gray
 
 def extract_text(img: cv2.Mat) -> str:
     """Extract text from processed image"""
-    return os.linesep.join(
-        line for line in pytesseract.image_to_string(img, lang=Config.langs).splitlines()
-        if line.strip()
-    )
+    debug('Running Tesseract OCR')
+    text = pytesseract.image_to_string(img, lang=Config.langs)
+    lines = [line for line in text.splitlines() if line.strip()]
+    debug(f'Extracted {len(lines)} lines of text')
+    return os.linesep.join(lines)
 
 def process_pdf(pdf_path: Path) -> None:
     """Process a single PDF file"""
     log(f'Processing {pdf_path.name}')
+    start = time.time()
 
     for i, page in enumerate(get_pages(pdf_path), 1):
+        debug(f'Processing page {i}')
         text = extract_text(process_img(resize_page(page)))
         out_path = Config.dirname / "output" / f"out_{pdf_path.stem}_p{i}.txt"
         out_path.write_text(text, encoding='utf-8')
-        log(f'✓ Page {i} done')
+        debug(f'Saved text to {out_path.name}')
+
+    duration = time.time() - start
+    log(f'Completed {pdf_path.name} in {duration:.1f}s')
 
 def main() -> None:
     start = time.time()
-    log(f'Using languages: {Config.langs}')
+    log('Starting OCR process')
+    debug(f'Languages: {Config.langs}')
+    debug(f'DPI: {Config.dpi}')
+    debug(f'Target width: {Config.target_width}')
+    debug(f'Max pages: {Config.max_pages}')
+    debug(f'GPU acceleration: {"enabled" if Config.use_gpu else "disabled"}')
 
     pdfs = list((Config.dirname / "data").glob('*.pdf'))
+    debug(f'Found {len(pdfs)} PDF files')
+
     for pdf in pdfs:
         try:
             process_pdf(pdf)
-            log(f'Done with {pdf.name}\n')
         except Exception as e:
-            print(f'Error processing {pdf.name}: {e}', file=sys.stderr, flush=True)
+            log(f'Error processing {pdf.name}: {e}', 'error')
 
-    log(f'All done in {time.time() - start:.1f}s')
+    duration = time.time() - start
+    log(f'All done in {duration:.1f}s')
 
 if __name__ == "__main__":
     main()
