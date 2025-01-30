@@ -1,14 +1,7 @@
 <div align="center">
-  <img 
-    src=".github/logo.svg" 
-    title="tess-pdfseq" 
-    align="middle" 
-    width="48" 
-  />
-  <strong>tess-pdfseq</strong>
+  <img src=".github/logo.svg" title="tess-pdfseq" width="128" />
+  <h1>tess-pdfseq</h1>
 </div>
-
----
 
 Configurable OCR for documents in any language. Built with Tesseract and optimized for PDF processing.
 
