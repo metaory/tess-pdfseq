@@ -10,7 +10,7 @@
 #   WIDTH       Target width in pixels (default: 1800)
 #   MAX_PAGES   Max pages per PDF (default: 3)
 #   WORKDIR     Working directory (default: $PWD)
-#   GPU         Use GPU acceleration (default: 1)
+#   GPU         Use GPU acceleration (default: 0)
 #   TAG         Docker image tag (default: latest)
 
 set -euo pipefail
@@ -22,35 +22,44 @@ LANGS=${LANGS:-fas}
 DPI=${DPI:-500}
 WIDTH=${WIDTH:-1800}
 MAX_PAGES=${MAX_PAGES:-3}
-GPU=${GPU:-1}
+GPU=${GPU:-0}
 TAG=${TAG:-latest}
 
 # Utils
 die() { printf '\e[31m%s\e[0m\n' "$*" >&2; exit 1; }
 log() { printf '\e[36m%s\e[0m\n' "$*"; }
+info() { printf '\e[2m%s\e[0m\n' "$*"; }
 
 # Validation
 [[ $# -eq 1 ]] || die "Usage: $0 input.7z"
-IN=$1
-[[ -f $IN ]] || die "Missing: $IN"
-[[ ${IN##*.} == "7z" ]] || die "Not a 7z file: $IN"
+[[ -f $1 ]] || die "Missing: $1"
 
 # Setup
 cd "$WORKDIR" || die "Failed to cd to $WORKDIR"
 mkdir -p {pdf,output}
+chmod 777 output  # Ensure write permissions for Docker container user
 
 # Extract
 log "Extracting PDFs..."
-7z e "$IN" -o"$PWD/pdf" >/dev/null || die "Failed extracting PDF"
+7z e "$1" -o"$PWD/pdf" "*.pdf" -y || die "Failed extracting PDF"
+info "Found PDFs: $(ls -1 pdf/*.pdf 2>/dev/null | wc -l)"
 
 # Process
 log "Running OCR with langs: $LANGS"
-docker run --rm \
-  ${GPU:+--gpus all} \
+info "- Mode: ${GPU:+GPU}${GPU:-CPU}"
+info "- DPI: $DPI"
+info "- Width: $WIDTH"
+info "- Max pages: $MAX_PAGES"
+
+docker run --rm -it \
   -e OCR_LANGS="$LANGS" \
   -e DPI="$DPI" \
   -e TARGET_WIDTH="$WIDTH" \
   -e MAX_PAGES="$MAX_PAGES" \
+  -e GPU="$GPU" \
+  -e PYTHONUNBUFFERED=1 \
+  -e TERM=xterm-256color \
+  -e COLORTERM=truecolor \
   -v "$PWD/pdf:/app/data:ro" \
   -v "$PWD/output:/app/output" \
   "tess-pdfseq:${TAG}" || die "OCR failed"
@@ -58,10 +67,13 @@ docker run --rm \
 # Archive
 log "Creating output archive..."
 OUT="ocr_$(date +%m%d_%H%M).7z"
-7z a "$OUT" output >/dev/null || die "Archive failed"
-log "Created: $OUT"
+7z a "$OUT" output -y || die "Archive failed"
+info "- Archive: $OUT"
+info "- Size: $(du -h "$OUT" | cut -f1)"
+info "- Files: $(find output -type f | wc -l)"
 
 # Cleanup
+log "Cleaning up..."
 rm -rf pdf/* output/*
 log "Done!"
 

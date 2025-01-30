@@ -3,7 +3,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Iterator, List
-
+import numpy as np
 import cv2
 import pytesseract
 from pdf2image import convert_from_path
@@ -53,22 +53,32 @@ def resize_page(page: Image.Image) -> Image.Image:
 def process_img(img: Image.Image) -> cv2.Mat:
     """Process image for better OCR results"""
     debug('Converting to OpenCV format')
+    # Convert PIL Image to numpy array first
+    np_img = np.array(img)
+
     # Use UMat for GPU acceleration if enabled
     if Config.use_gpu:
         debug('Using GPU acceleration')
-        cv_img = cv2.UMat(cv2.cvtColor(cv2.UMat(img), cv2.COLOR_RGB2BGR))
+        cv_img = cv2.UMat(cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR))
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-        kernel = cv2.UMat(cv2.Mat(1, 1, cv2.CV_8U))
+        kernel = np.ones((1,1), np.uint8)
+        kernel_umat = cv2.UMat(kernel)
     else:
         debug('Using CPU processing')
-        cv_img = cv2.cvtColor(cv2.Mat(img), cv2.COLOR_RGB2BGR)
+        cv_img = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-        kernel = cv2.Mat(1, 1, cv2.CV_8U)
+        kernel = np.ones((1,1), np.uint8)
 
     debug('Converting to grayscale')
     debug('Applying morphological operations')
     try:
-        morph = cv2.morphologyEx(cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel)
+        if Config.use_gpu:
+            morph = cv2.morphologyEx(cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel_umat),
+                                   cv2.MORPH_CLOSE, kernel_umat)
+        else:
+            morph = cv2.morphologyEx(cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel),
+                                   cv2.MORPH_CLOSE, kernel)
+
         result = cv2.bitwise_or(gray, morph)
         if Config.use_gpu:
             result = result.get()  # Download from GPU if needed
@@ -88,18 +98,40 @@ def extract_text(img: cv2.Mat) -> str:
 
 def process_pdf(pdf_path: Path) -> None:
     """Process a single PDF file"""
-    log(f'Processing {pdf_path.name}')
+    log(f'Processing PDF: {pdf_path.name}')
     start = time.time()
+    total_chars = 0
+    total_lines = 0
 
     for i, page in enumerate(get_pages(pdf_path), 1):
-        debug(f'Processing page {i}')
-        text = extract_text(process_img(resize_page(page)))
+        page_start = time.time()
+        log(f'Page {i}:', 'debug')
+
+        debug('Resizing page...')
+        resized = resize_page(page)
+
+        debug('Processing image...')
+        processed = process_img(resized)
+
+        debug('Extracting text...')
+        text = extract_text(processed)
+        lines = text.splitlines()
+        chars = sum(len(line) for line in lines)
+
         out_path = Config.dirname / "output" / f"out_{pdf_path.stem}_p{i}.txt"
         out_path.write_text(text, encoding='utf-8')
-        debug(f'Saved text to {out_path.name}')
+
+        page_time = time.time() - page_start
+        total_chars += chars
+        total_lines += len(lines)
+
+        log(f'✓ Page {i} done in {page_time:.1f}s ({len(lines)} lines, {chars} chars)', 'info')
 
     duration = time.time() - start
+    avg_time = duration / i if i > 0 else 0
     log(f'Completed {pdf_path.name} in {duration:.1f}s')
+    debug(f'Average {avg_time:.1f}s per page')
+    debug(f'Total: {total_lines} lines, {total_chars} chars')
 
 def main() -> None:
     start = time.time()

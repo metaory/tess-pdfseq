@@ -57,8 +57,10 @@ COPY --from=builder \
     /usr/local/lib/python3.12/site-packages
 COPY src ./src
 
-# Set permissions
-RUN chown -R ocr:ocr /app
+# Create directories with proper permissions
+RUN mkdir -p /app/output && \
+    chown -R ocr:ocr /app && \
+    chmod -R 755 /app
 
 # Switch to non-root user
 USER ocr
