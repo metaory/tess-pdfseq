@@ -1,0 +1,5 @@
+# Python >= 3.12
+opencv-python-headless>=4.9.0
+pdf2image>=1.17.0
+Pillow>=10.2.0
+pytesseract>=0.3.10

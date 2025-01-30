@@ -1,0 +1,68 @@
+#!/bin/bash
+# tess-pdfseq: Sequential PDF OCR with Tesseract
+#
+# Usage:
+#   pdfseq input.7z
+#
+# Options (env vars):
+#   LANGS       OCR languages, plus separated (default: fas)
+#   DPI         PDF scan resolution (default: 500)
+#   WIDTH       Target width in pixels (default: 1800)
+#   MAX_PAGES   Max pages per PDF (default: 3)
+#   WORKDIR     Working directory (default: $PWD)
+#   GPU         Use GPU acceleration (default: 1)
+#   TAG         Docker image tag (default: latest)
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# Config
+WORKDIR=${WORKDIR:-$PWD}
+LANGS=${LANGS:-fas}
+DPI=${DPI:-500}
+WIDTH=${WIDTH:-1800}
+MAX_PAGES=${MAX_PAGES:-3}
+GPU=${GPU:-1}
+TAG=${TAG:-latest}
+
+# Utils
+die() { printf '\e[31m%s\e[0m\n' "$*" >&2; exit 1; }
+log() { printf '\e[36m%s\e[0m\n' "$*"; }
+
+# Validation
+[[ $# -eq 1 ]] || die "Usage: $0 input.7z"
+IN=$1
+[[ -f $IN ]] || die "Missing: $IN"
+[[ ${IN##*.} == "7z" ]] || die "Not a 7z file: $IN"
+
+# Setup
+cd "$WORKDIR" || die "Failed to cd to $WORKDIR"
+mkdir -p {pdf,output}
+
+# Extract
+log "Extracting PDFs..."
+7z e "$IN" -o"$PWD/pdf" >/dev/null || die "Failed extracting PDF"
+
+# Process
+log "Running OCR with langs: $LANGS"
+docker run --rm \
+  ${GPU:+--gpus all} \
+  -e OCR_LANGS="$LANGS" \
+  -e DPI="$DPI" \
+  -e TARGET_WIDTH="$WIDTH" \
+  -e MAX_PAGES="$MAX_PAGES" \
+  -v "$PWD/pdf:/app/data:ro" \
+  -v "$PWD/output:/app/output" \
+  "tess-pdfseq:${TAG}" || die "OCR failed"
+
+# Archive
+log "Creating output archive..."
+OUT="ocr_$(date +%m%d_%H%M).7z"
+7z a "$OUT" output >/dev/null || die "Archive failed"
+log "Created: $OUT"
+
+# Cleanup
+rm -rf pdf/* output/*
+log "Done!"
+
+# vim: ft=bash

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  width="500"
+  height="500"
+  version="1.1"
+  viewBox="0 0 500 500"
+  xmlns="http://www.w3.org/2000/svg">
+  <style>
+    svg { color-scheme: only dark; }
+  </style>
+  <defs>
+    <linearGradient id="polylineGradient" gradientTransform="rotate(-45)">
+      <stop offset="20%" stop-color="#eeaaff"/>
+      <stop offset="100%" stop-color="#ff1177"/>
+    </linearGradient>
+  </defs>
+  <rect
+    x="50"
+    y="50"
+    width="400"
+    height="400"
+    rx="140"
+    ry="140"
+    fill="url(#polylineGradient)"
+    stroke="url(#polylineGradient)"
+    stroke-width="50"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+  <rect
+    x="140"
+    y="140"
+    width="220"
+    height="220"
+    rx="70"
+    ry="70"
+    fill="#ff2277"
+    transform="rotate(20, 250, 250)"
+    stroke="#ff2277"
+    stroke-width="50"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+</svg>
+

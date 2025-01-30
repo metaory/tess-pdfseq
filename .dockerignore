@@ -1,0 +1,31 @@
+# VCS
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Project
+/pdf
+/data
+/output
+*.7z
+*.zip
+*.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*~
